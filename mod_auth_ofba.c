@@ -73,6 +73,8 @@ typedef struct {
   char *cookie_name;
   int session_duration;
   int session_autorenew;
+  int enforce_https;
+  int https_port;
   ap_regex_t *cookie_pat;
 } auth_ofba_conf_t;
 
@@ -137,6 +139,12 @@ static const command_rec auth_ofba_cmds[] = {
   AP_INIT_FLAG("AuthOFBAsessionAutoRenew", ap_set_flag_slot,
                (void *)APR_OFFSETOF(auth_ofba_conf_t, session_autorenew),
                 OR_ALL, "Automatically extend session on each request"),
+  AP_INIT_FLAG("AuthOFBAenforceHTTPS", ap_set_flag_slot,
+               (void *)APR_OFFSETOF(auth_ofba_conf_t, enforce_https),
+                OR_ALL, "Enforce HTTPS connections"),
+  AP_INIT_TAKE1("AuthOFBAhttpsPort", ap_set_int_slot,
+               (void *)APR_OFFSETOF(auth_ofba_conf_t, https_port),
+                OR_ALL, "HTTPS port of enforced connections"),
   {NULL}
 };
 
@@ -350,6 +358,8 @@ auth_ofba_create_dir_config(apr_pool_t *p, char *x)
   conf->cookie_name = AUTH_OFBA_COOKIE_NAME_DEFAULT;
   conf->session_duration = AUTH_OFBA_SESSION_DURATION_DEFAULT;
   conf->session_autorenew = 0;
+  conf->enforce_https = 0;
+  conf->https_port = APR_URI_HTTPS_DEFAULT_PORT;
   conf->cookie_pat = auth_ofba_cookie_pat(p, conf->cookie_name);
 
   return conf;
@@ -405,7 +415,7 @@ auth_ofba_set_cookie(request_rec *r, auth_ofba_session1_t *session1)
   apr_status_t res = APR_SUCCESS;
   const char *cookie_opts;
 
-  if (strcmp(ap_http_scheme(r), "https") == 0)
+  if (conf->enforce_https || strcmp(ap_http_scheme(r), "https") == 0)
     cookie_opts = "secure;httpOnly";
   else
     cookie_opts = "httpOnly";
@@ -417,9 +427,8 @@ auth_ofba_set_cookie(request_rec *r, auth_ofba_session1_t *session1)
   }
 
   cookie = apr_psprintf(r->pool, "%s=%s;version=1;domain=%s;"
-                        "path=/;max-age=%lld;expires=%s;%s",
+                        "path=/;expires=%s;%s",
                         conf->cookie_name, session1->cookie, r->hostname,
-                        apr_time_sec(session1->expires -apr_time_now()),
                         expires, cookie_opts);
 
 #ifdef DEBUG
@@ -693,6 +702,8 @@ auth_ofba_port_from_scheme(const char *scheme)
 static const char *
 auth_ofba_url_from_path(request_rec *r, const char *path)
 {
+  auth_ofba_conf_t *conf = ap_get_module_config(r->per_dir_config,
+                                                &auth_ofba_module);
   const char *scheme;
   apr_port_t port;
   char *port_str;
@@ -702,7 +713,15 @@ auth_ofba_url_from_path(request_rec *r, const char *path)
 
   scheme = ap_http_scheme(r);
   port = auth_ofba_port_from_scheme(scheme);
-  if (r->server->addrs->host_port != port)
+  if(conf->enforce_https) {
+    scheme = "https";
+  	port = APR_URI_HTTPS_DEFAULT_PORT;
+    if(port == conf->https_port)
+      port_str = "";
+    else
+      port_str = apr_psprintf(r->pool, ":%d", conf->https_port);
+  }
+  else if (r->server->addrs->host_port != port)
     port_str = apr_psprintf(r->pool, ":%d", r->server->addrs->host_port);
   else
     port_str = "";
@@ -828,7 +847,7 @@ auth_ofba_authenticated(request_rec *r)
 
 #ifdef DEBUG
   ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
-                "user = \"%s\" curent_auth = \"%s\"",
+                "user = \"%s\" current_auth = \"%s\"",
                 r->user, current_auth);
 #endif
 

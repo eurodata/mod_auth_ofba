@@ -15,7 +15,12 @@ https://msdn.microsoft.com/en-us/library/office/cc313069%28v=office.12%29.aspx
 
  2 Building and installing mod_auth_ofba
  =======================================
+## Option 1: Use attached Dockerfile
+Use the provided Dockerfile to build and install mod_auth_ofba module based on httpd Alpine image.
 
+**Hint: Neither basic auth credentials, nor login or success HTMLs are included, please change config according to your needs.**
+
+## Option 2: Use plain make install
 Just run usual configure && make && make install
 
 You may need to provide apxs path using --with-apxs
@@ -32,14 +37,11 @@ For instance:
 You must at least set the AuthOFBAenable, AuthOFBAauthRequestURL and
 AuthOFBAauthSuccessURL options.
 
-```
-AuthOFBAenable           Enable mod_auth_ofba (on, off)
-AuthOFBAauthRequestURL   URL or location path for authentication of 
-                         OFBA-capable clients. It must be protected 
-                         by authentication such as Form or Basic.
-AuthOFBAauthSuccessURL   URL or location path reached on authentication
-                         success.
-```
+| Option | Description | Example |
+| ------ | ----------- | ------- |
+| AuthOFBAenable | Enable mod_auth_ofba (on, off) | On |
+| AuthOFBAauthRequestURL | URL or location path for authentication of OFBA-capable clients. It must be protected by authentication such as Form or Basic. | https://www.my-server.com/login.aspx?wreply=https://www.my-server.com/OnSuccess.aspx |
+| AuthOFBAauthSuccessURL | URL or location path reached on authentication success. | https://www.my-server.com/OnSuccess.aspx |
 
 If the client reaches AuthOFBAauthSuccessURL and is authenticated,
 mod_auth_ofba will send an OFBA session cookie. All OFBA-capable
@@ -54,16 +56,16 @@ NB: During actual OFBA authentication, AuthOFBAauthRequestURL is
 
 Other options:
 
-```
-AuthOFBAdialogSize       Authentication dialog size, if using Form
-                         authentication
-AuthOFBAcookieName       OFBA session cookie name
-AuthOFBAsessionDuration  OFBA session lifetime in seconds
-AuthOFBAsessionAutoRenew Automatically refresh session lifetime on each request
-```
+| Option | Description | Example |
+| ------ | ----------- | ------- |
+| AuthOFBAdialogSize | Authentication dialog size, if using Form authentication | 800x600 |
+| AuthOFBAcookieName | OFBA session cookie name | MY_OFBA_COOKIE |
+| AuthOFBAsessionDuration | OFBA session lifetime in seconds | 28800 |
+| AuthOFBAsessionAutoRenew | Automatically refresh session lifetime on each request | On |
+| AuthOFBAenforceHTTPS | Enforce HTTPS connections | On |
+| AuthOFBAhttpsPort | HTTPS port of enforced connections (only needed when different from standard port) | 4433 |
 
-Additionally, the no-ofba environment variable can be set (e.g.: with
-SetEnvIf) to disable OFBA in some situations.
+Additionally, the no-ofba environment variable can be set (e.g.: with SetEnvIf) to disable OFBA in some situations.
 
 Sample httpd.conf section:
 
@@ -84,7 +86,6 @@ Sample httpd.conf section:
   Require valid-user
 
   AuthOFBAenable On
-  AuthOFBArealm "WebDAV share"
   AuthOFBAauthRequestURL /auth/index.html
   AuthOFBAauthSuccessURL /auth/success.html
 </Location>

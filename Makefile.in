@@ -365,7 +365,7 @@ clean-sbinPROGRAMS:
 
 ofba_session$(EXEEXT): $(ofba_session_OBJECTS) $(ofba_session_DEPENDENCIES) $(EXTRA_ofba_session_DEPENDENCIES) 
 	@rm -f ofba_session$(EXEEXT)
-	$(AM_V_CCLD)$(ofba_session_LINK) $(ofba_session_OBJECTS) $(ofba_session_LDADD) $(LIBS)
+	$(AM_V_CCLD)$(ofba_session_LINK) $(ofba_session_OBJECTS) $(ofba_session_LDFLAGS) $(ofba_session_LDADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
