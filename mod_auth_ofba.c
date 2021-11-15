@@ -47,6 +47,8 @@
 #define AUTH_OFBA_DIALOG_SIZE_DEFAULT "320x130"
 #define AUTH_OFBA_COOKIE_NAME_DEFAULT "OFBAsession"
 #define AUTH_OFBA_SESSION_DURATION_DEFAULT 86400
+#define AUTH_OFBA_LOCKFILE_DEFAULT "/var/run/mod_auth_ofba.lock"
+#define AUTH_OFBA_SESSIONFILE_DEFAULT "/var/run/mod_auth_ofba.db"
 
 #include "auth_ofba.h"
 
@@ -85,6 +87,8 @@ typedef struct {
   apr_size_t session_count;
   apr_global_mutex_t *mtx;
   apr_random_t *random;
+  char *lock_file;
+  char *session_file;
 } auth_ofba_state_t;
 
 module AP_MODULE_DECLARE_DATA auth_ofba_module;
@@ -104,16 +108,34 @@ auth_ofba_cookie_pat(apr_pool_t *p, const char *cookie_name)
 }
 
 static const char *
+auth_ofba_set_session_file(cmd_parms *cmd, void *conf_ptr, const char *val)
+{
+  auth_ofba_state_t *state = ap_get_module_config(cmd->server->module_config, &auth_ofba_module);
+  state->session_file = apr_pstrdup(cmd->pool, val);
+
+  return NULL;
+}
+
+static const char *
+auth_ofba_set_lock_file(cmd_parms *cmd, void *conf_ptr, const char *val)
+{
+  auth_ofba_state_t *state = ap_get_module_config(cmd->server->module_config, &auth_ofba_module);
+  state->lock_file = apr_pstrdup(cmd->pool, val);
+
+  return NULL;
+}
+
+static const char *
 auth_ofba_set_cookie_slot(cmd_parms *cmd, void *conf_ptr, const char *val)
 {
   const char *errmsg = NULL;
   auth_ofba_conf_t *conf = (auth_ofba_conf_t *)conf_ptr;
-  
+
   conf->cookie_name = apr_pstrdup(cmd->pool, val);
 
   if ((conf->cookie_pat = auth_ofba_cookie_pat(cmd->pool, val)) == NULL)
     errmsg = "Fatal error: Bad AuthOFBAcookieName";
-    
+
   return errmsg;
 }
 
@@ -139,6 +161,12 @@ static const command_rec auth_ofba_cmds[] = {
   AP_INIT_FLAG("AuthOFBAsessionAutoRenew", ap_set_flag_slot,
                (void *)APR_OFFSETOF(auth_ofba_conf_t, session_autorenew),
                 OR_ALL, "Automatically extend session on each request"),
+  AP_INIT_TAKE1("AuthOFBAlockFile", auth_ofba_set_lock_file,
+                NULL,
+                OR_ALL, "Set lock file path"),
+  AP_INIT_TAKE1("AuthOFBAsessionFile", auth_ofba_set_session_file,
+                NULL,
+                OR_ALL, "Set session file path"),
   AP_INIT_FLAG("AuthOFBAenforceHTTPS", ap_set_flag_slot,
                (void *)APR_OFFSETOF(auth_ofba_conf_t, enforce_https),
                 OR_ALL, "Enforce HTTPS connections"),
@@ -189,7 +217,7 @@ auth_ofba_init(apr_pool_t *conf_pool, apr_pool_t *log_pool,
 
   state = ap_get_module_config(s->module_config, &auth_ofba_module);
 
-  res = apr_global_mutex_create(&state->mtx, AUTH_OFBA_LOCKFILE,
+  res = apr_global_mutex_create(&state->mtx, state->lock_file,
                                 APR_LOCK_DEFAULT, conf_pool);
   if (res != APR_SUCCESS) {
      ap_log_error(APLOG_MARK, APLOG_ERR, res, s,
@@ -206,10 +234,10 @@ auth_ofba_init(apr_pool_t *conf_pool, apr_pool_t *log_pool,
 
   fflags = APR_FOPEN_READ|APR_FOPEN_WRITE|APR_FOPEN_CREATE|APR_FOPEN_BINARY;
   fperms = APR_FPROT_UREAD|APR_FPROT_UWRITE;
-  res = apr_file_open(&fh, AUTH_OFBA_SESSIONFILE, fflags, fperms, conf_pool);
+  res = apr_file_open(&fh, state->session_file, fflags, fperms, conf_pool);
   if (res != APR_SUCCESS) {
      ap_log_error(APLOG_MARK, APLOG_ERR, res, s,
-                  "apr_file_open(\"%s\") failed", AUTH_OFBA_SESSIONFILE);
+                  "apr_file_open(\"%s\") failed", state->session_file);
      goto out;
   }
 
@@ -238,7 +266,7 @@ auth_ofba_init(apr_pool_t *conf_pool, apr_pool_t *log_pool,
   res = apr_file_trunc(fh, session_size);
   if (res != APR_SUCCESS) {
      ap_log_error(APLOG_MARK, APLOG_ERR, res, s,
-                  "apr_file_trunc(\"%s\") failed", AUTH_OFBA_SESSIONFILE);
+                  "apr_file_trunc(\"%s\") failed", state->session_file);
      goto out;
   }
 
@@ -334,6 +362,9 @@ auth_ofba_server_config(apr_pool_t *p, server_rec *s)
     return state;
 
   state = apr_palloc(p, sizeof(*state));
+
+  state->lock_file = AUTH_OFBA_LOCKFILE_DEFAULT;
+  state->session_file = AUTH_OFBA_SESSIONFILE_DEFAULT;
 
   res = apr_pool_userdata_set(state, userdata_key, apr_pool_cleanup_null, p);
   if (res != APR_SUCCESS) {

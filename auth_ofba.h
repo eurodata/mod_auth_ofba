@@ -4,8 +4,6 @@
 #include <apr_time.h>
 #include <apr_sha1.h>
 
-#define AUTH_OFBA_LOCKFILE "/var/run/mod_auth_ofba.lock"
-#define AUTH_OFBA_SESSIONFILE "/var/run/mod_auth_ofba.db"
 #define AUTH_OFBA_SESSION_MAX 1024
 #define AUTH_OFBA_SESSION_VERSION 1
 #define AUTH_OFBA_USER_MAX 16

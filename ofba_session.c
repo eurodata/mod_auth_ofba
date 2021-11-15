@@ -11,6 +11,9 @@
 
 #include "auth_ofba.h"
 
+#define AUTH_OFBA_LOCKFILE "/var/run/mod_auth_ofba.lock"
+#define AUTH_OFBA_SESSIONFILE "/var/run/mod_auth_ofba.db"
+
 static const apr_getopt_option_t ofba_session_options[] = {
  { "list",        'l', FALSE, "list sessions" },
  { "kill-user",   'u', TRUE,  "Kill user session" },

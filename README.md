@@ -62,6 +62,8 @@ Other options:
 | AuthOFBAcookieName | OFBA session cookie name | MY_OFBA_COOKIE |
 | AuthOFBAsessionDuration | OFBA session lifetime in seconds | 28800 |
 | AuthOFBAsessionAutoRenew | Automatically refresh session lifetime on each request | On |
+| AuthOFBAsessionFile | Session file path | /var/run/mod_auth_ofba.db |
+| AuthOFBAlockFile | Lock file path | /var/run/mod_auth_ofba.lock |
 | AuthOFBAenforceHTTPS | Enforce HTTPS connections | On |
 | AuthOFBAhttpsPort | HTTPS port of enforced connections (only needed when different from standard port) | 4433 |
 
