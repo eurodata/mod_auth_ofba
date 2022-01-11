@@ -46,9 +46,11 @@
 #define AUTH_OFBA_REALM_DEFAULT "mod_auth_ofba"
 #define AUTH_OFBA_DIALOG_SIZE_DEFAULT "320x130"
 #define AUTH_OFBA_COOKIE_NAME_DEFAULT "OFBAsession"
+#define AUTH_OFBA_COOKIE_PATH_DEFAULT "/"
 #define AUTH_OFBA_SESSION_DURATION_DEFAULT 86400
 #define AUTH_OFBA_LOCKFILE_DEFAULT "/var/run/mod_auth_ofba.lock"
 #define AUTH_OFBA_SESSIONFILE_DEFAULT "/var/run/mod_auth_ofba.db"
+#define AUTH_OFBA_PATH_PARAMS_REGEX "(.*)/==(.+)==/(.*)"
 
 #include "auth_ofba.h"
 
@@ -73,6 +75,8 @@ typedef struct {
   char *auth_success_url;
   char *dialog_size;
   char *cookie_name;
+  char *cookie_path;
+  int use_persistent_cookies;
   int session_duration;
   int session_autorenew;
   int enforce_https;
@@ -155,6 +159,12 @@ static const command_rec auth_ofba_cmds[] = {
   AP_INIT_TAKE1("AuthOFBAcookieName", auth_ofba_set_cookie_slot,
                 NULL,
                 OR_ALL, "Set OFBA session cookie name"),
+  AP_INIT_TAKE1("AuthOFBAcookiePath", ap_set_string_slot,
+                (void *)APR_OFFSETOF(auth_ofba_conf_t, cookie_path),
+                OR_ALL, "Set OFBA session cookie path"),
+  AP_INIT_FLAG("AuthOFBAusePersistentCookies", ap_set_flag_slot,
+               (void *)APR_OFFSETOF(auth_ofba_conf_t, use_persistent_cookies),
+                OR_ALL, "Use persistent cookies instead of session cookies"),
   AP_INIT_TAKE1("AuthOFBAsessionDuration", ap_set_int_slot,
                 (void *)APR_OFFSETOF(auth_ofba_conf_t, session_duration),
                 OR_ALL, "Set OFBA session session duration"),
@@ -387,6 +397,8 @@ auth_ofba_create_dir_config(apr_pool_t *p, char *x)
   conf->auth_success_url = NULL;
   conf->dialog_size = AUTH_OFBA_DIALOG_SIZE_DEFAULT;
   conf->cookie_name = AUTH_OFBA_COOKIE_NAME_DEFAULT;
+  conf->cookie_path = AUTH_OFBA_COOKIE_PATH_DEFAULT;
+  conf->use_persistent_cookies = 1;
   conf->session_duration = AUTH_OFBA_SESSION_DURATION_DEFAULT;
   conf->session_autorenew = 0;
   conf->enforce_https = 0;
@@ -428,7 +440,7 @@ auth_ofba_get_cookie(request_rec *r)
   }
 
   if ((value = ap_pregsub(r->pool, "$2", cookie, nmatch, pmatch)) == NULL) {
-    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Cookie match faiiled 3");
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Cookie match failed 3");
     goto out;
   }
 
@@ -441,7 +453,6 @@ auth_ofba_set_cookie(request_rec *r, auth_ofba_session1_t *session1)
 {
   auth_ofba_conf_t *conf = ap_get_module_config(r->per_dir_config,
                                                 &auth_ofba_module);
-  char expires[APR_RFC822_DATE_LEN];
   char *cookie;
   apr_status_t res = APR_SUCCESS;
   const char *cookie_opts;
@@ -451,16 +462,23 @@ auth_ofba_set_cookie(request_rec *r, auth_ofba_session1_t *session1)
   else
     cookie_opts = "httpOnly";
 
-  res = apr_rfc822_date(expires, session1->expires);
-  if (res != APR_SUCCESS) {
-    ap_log_rerror(APLOG_MARK, APLOG_ERR, res, r, "apr_rfc822_date failed");
-    goto out;
-  }
-
-  cookie = apr_psprintf(r->pool, "%s=%s;version=1;domain=%s;"
-                        "path=/;expires=%s;%s",
+  if(conf->use_persistent_cookies) {
+    char expires[APR_RFC822_DATE_LEN];
+    res = apr_rfc822_date(expires, session1->expires);
+    if (res != APR_SUCCESS) {
+      ap_log_rerror(APLOG_MARK, APLOG_ERR, res, r, "apr_rfc822_date failed");
+      goto out;
+    }
+    cookie = apr_psprintf(r->pool, "%s=%s;version=1;domain=%s;"
+                        "path=%s;expires=%s;%s",
                         conf->cookie_name, session1->cookie, r->hostname,
-                        expires, cookie_opts);
+                        conf->cookie_path, expires, cookie_opts);
+  }
+  else
+    cookie = apr_psprintf(r->pool, "%s=%s;version=1;domain=%s;"
+                        "path=%s;%s",
+                        conf->cookie_name, session1->cookie, r->hostname,
+                        conf->cookie_path, cookie_opts);
 
 #ifdef DEBUG
   ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Set-Cookie: %s", cookie);
@@ -784,6 +802,22 @@ auth_ofba_required_path(request_rec *r, const char *realm)
       "&returnurl=", apr_pescape_urlencoded(r->pool, 
                                             auth_ofba_success_url(r)),
       NULL);
+
+  // add additional parameters from path
+  const char *req_url = r->unparsed_uri;
+  ap_regex_t *path_params_regex = ap_pregcomp(r->pool, AUTH_OFBA_PATH_PARAMS_REGEX, 0);
+  ap_regmatch_t pmatch[path_params_regex->re_nsub + 1];
+  if(ap_regexec(path_params_regex, req_url, path_params_regex->re_nsub + 1, pmatch, 0) == 0) {
+    char *path_params = ap_pregsub(r->pool, "$2", req_url, path_params_regex->re_nsub + 1, pmatch);
+    char *splitted_params = strtok(path_params, ";");
+    while(splitted_params != NULL)
+    {
+        ofba_required_url = apr_pstrcat(r->pool, ofba_required_url,
+              "&", splitted_params,
+              NULL);
+        splitted_params = strtok(NULL, ";");
+    }
+  }
 
   return ofba_required_url;
 }

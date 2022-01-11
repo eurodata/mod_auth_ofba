@@ -34,6 +34,8 @@ For instance:
  3 Apache configuration
  ======================
 
+## Required configuration
+
 You must at least set the AuthOFBAenable, AuthOFBAauthRequestURL and
 AuthOFBAauthSuccessURL options.
 
@@ -54,25 +56,51 @@ NB: During actual OFBA authentication, AuthOFBAauthRequestURL is
     will break if AuthName is not the same for the requested 
     directory and for the server root.
 
-Other options:
+## Forward path parameters to request URL
 
-| Option | Description | Example |
+You can add additional path parameters to any file request which will be forwarded as query parameters to request URL. They are separated with a semicolon and have to be placed in file path following this regex pattern:
+```
+(.*)/==(.+)==/(.*)
+```
+
+You will need an AliasMatch to map to the correct file path in WebDav without path parameters (see sample httpd.conf section and example.conf).
+
+### Example
+Assuming AuthOFBAauthRequestURL is set to the example above (https://www.my-server.com/login.aspx?wreply=https://www.my-server.com/OnSuccess.aspx).
+
+A file request with the path params "param1=foo" and "param2=bar" will we done as follows:
+```
+https://www.my-server.com/somepath/==param1=foo;param2=bar==/file.docx
+```
+And will result in the following request URL:
+```
+https://www.my-server.com/login.aspx?wreply=https://www.my-server.com/OnSuccess.aspx&param1=foo&param2=bar
+```
+
+## Other options
+
+| Option | Description | Default |
 | ------ | ----------- | ------- |
-| AuthOFBAdialogSize | Authentication dialog size, if using Form authentication | 800x600 |
-| AuthOFBAcookieName | OFBA session cookie name | MY_OFBA_COOKIE |
-| AuthOFBAsessionDuration | OFBA session lifetime in seconds | 28800 |
-| AuthOFBAsessionAutoRenew | Automatically refresh session lifetime on each request | On |
+| AuthOFBAdialogSize | Authentication dialog size, if using Form authentication | 320x130 |
+| AuthOFBAcookieName | OFBA session cookie name | OFBAsession |
+| AuthOFBAcookiePath | OFBA session cookie path | / |
+| AuthOFBAusePersistentCookies | Use persistent cookies instead of session cookies | On |
+| AuthOFBAsessionDuration | OFBA session lifetime in seconds | 86400 |
+| AuthOFBAsessionAutoRenew | Automatically refresh session lifetime on each request | Off |
 | AuthOFBAsessionFile | Session file path | /var/run/mod_auth_ofba.db |
 | AuthOFBAlockFile | Lock file path | /var/run/mod_auth_ofba.lock |
-| AuthOFBAenforceHTTPS | Enforce HTTPS connections | On |
-| AuthOFBAhttpsPort | HTTPS port of enforced connections (only needed when different from standard port) | 4433 |
+| AuthOFBAenforceHTTPS | Enforce HTTPS connections | Off |
+| AuthOFBAhttpsPort | HTTPS port of enforced connections (only needed when different from standard port) | 443 |
 
 Additionally, the no-ofba environment variable can be set (e.g.: with SetEnvIf) to disable OFBA in some situations.
 
-Sample httpd.conf section:
+## Sample httpd.conf section
 
 ```
-<Location>
+AliasMatch "^/(.+)/==(.+)==$" "/var/protected/$1/"
+AliasMatch "^/(.+)/==(.+)==/(.*)$" "/var/protected/$1/$3"
+Alias / "/var/protected/"
+<Directory "/var/protected/">
   Dav filesystem
   Header add MS-Author-Via "DAV"
   Setenv "redirect-carefully"
@@ -90,7 +118,7 @@ Sample httpd.conf section:
   AuthOFBAenable On
   AuthOFBAauthRequestURL /auth/index.html
   AuthOFBAauthSuccessURL /auth/success.html
-</Location>
+</Directory>
 ```
 
 NB: Using HTTP Basic authentication, mod_auth_ofba will redirect
