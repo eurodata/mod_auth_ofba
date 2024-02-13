@@ -20,6 +20,16 @@ Use the provided Dockerfile to build and install mod_auth_ofba module based on h
 
 **Hint: Neither basic auth credentials, nor login or success HTMLs are included, please change config according to your needs.**
 
+### Run configuration
+#### Alpine
+```bash
+docker build -t mod_auth_ofba -f alpine.Dockerfile .
+```
+#### Debian
+```bash
+docker build -t mod_auth_ofba -f debian.Dockerfile .
+```
+
 ## Option 2: Use plain make install
 Just run usual configure && make && make install
 
